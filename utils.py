@@ -41,6 +41,79 @@ instructions = """
         •	Ensure results are consistent with the Pavement Condition Index (PCI) system, emphasizing real-world road safety and functionality over purely cosmetic or minor issues.
     """
 
+greenway_instructions = """
+    You are a dedicated greenway pavement analyst. Your task is to review GoPro images or video frames of paved greenways and assess surface condition by detecting and quantifying key defects. Your primary goal is to emulate expert-level evaluations with high consistency and clarity.
+ 
+1. Primary Objectives
+
+For each image or frame:
+•	Estimate a PASER rating (1–10) based on the entire visible segment. Think: “If this condition continued for the whole greenway, what would its PASER score be?”
+•	Assign severity scores (0–10) for the following:
+o	Line Cracking
+o	Longitudinal Cracking
+o	Raveling
+o	Upheaval
+ 
+2. PASER Rating Guidelines
+
+Use these surface-level indicators when assigning PASER scores:
+Score	Meaning	Notes
+10–9	Excellent	No visible defects
+8–7	Very Good–Good	Slight surface wear, light cracking
+6–5	Good–Fair	Moderate cracking, minor raveling or patching
+4–3	Fair–Poor	Severe cracking, potholes, upheaval, tripping hazards
+2–1	Very Poor–Failed	Major damage, unusable, full reconstruction needed
+Always highlight images rated 3 or below as critical.
+3. Defect Detection and Severity Scoring (0–10)
+
+Assign scores using the following rubrics:
+
+A. Line Cracking (0–10)
+•	Focus on visible straight cracks, either transverse or diagonal.
+•	Ignore faint hairline marks; score only meaningful cracks.
+•	0 = none; 5 = some moderate cracking; 10 = extensive, deep cracks.
+
+B. Longitudinal Cracking (0–10)
+•	Cracks running parallel to the direction of travel.
+•	Prioritize ones that appear continuous, deep, or cause uneven surfaces.
+•	0 = none; 10 = multiple deep or wide cracks with continuity.
+
+C. Raveling (0–10)
+•	Areas where the asphalt has degraded into loose gravel or has visibly rough surface texture.
+•	Score based on spread and visual severity.
+•	0 = smooth surface; 10 = widespread loose material and disintegration.
+
+D. Upheaval (0–10)
+•	Caused by root damage or other vertical displacement.
+•	Prioritize changes that create trip hazards or uneven transitions.
+•	0 = flat surface; 10 = clear raised sections that affect safety.
+ 
+4. Detection Confidence
+
+For each defect (if detected), provide:
+•	Presence: Yes/No
+•	Confidence Score: 0.0–1.0
+
+Use >0.7 for obvious cases. Below 0.3 = ambiguous → recommend follow-up.
+ 
+5. Reporting Template (per frame)
+
+Example output:
+{
+  "PASER_rating": 3,
+  "line_cracking": 6,
+  "longitudinal_cracking": 8,
+  "raveling": 5,
+  "upheaval": 7,
+  "summary": "Significant longitudinal cracking and root-related upheaval. This frame likely reflects poor condition overall. Recommend further review."
+}
+6. Final Notes
+•	Always consider safety and long-term performance in your ratings.
+•	Be conservative with PASER 8–10. Most images should fall in 4–7 unless pristine or severely damaged.
+•	Match expert methodology: combine visual assessment, safety awareness, and material understanding.
+•	When unsure, recommend flagging the frame for human review.
+"""
+
 model = 'gpt-4o-mini'
 
 response_format = {
@@ -199,8 +272,71 @@ batch_response_format = {
     }
 }
 
+greenway_user_message = "Please analyze these images and share your expert greenway condition analyses, adhering to the JSON schema provided."
+greenway_response_format = {
+  "type": "json_schema",
+  "json_schema": {
+    "name": "road_condition_batch",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "analyses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "file_id": {
+                "type": "string",
+                "description": "The OpenAI file ID or unique identifier of the analyzed image frame"
+              },
+              "PASER_rating": {
+                "type": "integer",
+                "description": "Estimated PASER rating between 1 and 10 (1 = failed, 10 = excellent)"
+              },
+              "line_cracking": {
+                "type": "integer",
+                "description": "Severity score for general line cracking ranging from 0 to 10 (0 = none, 10 = severe)"
+              },
+              "longitudinal_cracking": {
+                "type": "integer",
+                "description": "Severity score for longitudinal cracks  ranging from 0 to 10 (0 = none, 10 = severe)"
+              },
+              "raveling": {
+                "type": "integer",
+                "description": "Severity score for raveling  ranging from 0 to 10 (0 = none, 10 = severe)"
+              },
+              "upheaval": {
+                "type": "integer",
+                "description": "Severity score for pavement upheaval  ranging from 0 to 10 (0 = none, 10 = severe)"
+              },
+              "summary": {
+                "type": "string",
+                "description": "Brief natural language summary of observed conditions and key issues"
+              }
+            },
+            "required": [
+              "file_id",
+              "PASER_rating",
+              "line_cracking",
+              "longitudinal_cracking",
+              "raveling",
+              "upheaval",
+              "summary"
+            ],
+            "additionalProperties": False
+          }
+        }
+      },
+      "required": ["analyses"],
+      "additionalProperties": False
+    },
+    "strict": True
+  }
+}
+
 assistant = 'asst_eU5BTCInSqddd4fsRiXwE8Dm'
 batch_assistant = 'asst_os1KrypxpdTlWtqm7eswVUg6'
+greenway_assistant = 'asst_1lJD0RtJ2eMEaZxiyoZ9Mzcn'
 
 unprocessed_videos_path = 'unprocessed_videos'
 
@@ -219,7 +355,7 @@ box_road_health_folder_id = '309237796489'
 box_videos_folder_id = '303832684570'
 box_archived_videos_folder_id = '308058834229'
 box_images_folder_id = '308059149587'
-box_archived_images_folder_id = '308059844499'
+box_archived_images_folder_id = '316117482557'
 box_work_order_images_folder_id = '308058285408'
 
 def log_event(message):
@@ -230,6 +366,13 @@ def get_assistant():
 
 def get_batch_assistant():
     return batch_assistant
+
+def get_greenway_assistant():
+    return greenway_assistant
+
+def set_greenway_assistant(greenway_assistant_id):
+    global greenway_assistant
+    greenway_assistant = greenway_assistant_id
 
 def set_batch_assistant(batch_assistant_id):
     global batch_assistant
